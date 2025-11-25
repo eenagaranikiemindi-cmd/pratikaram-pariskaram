@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>parishkaram.com — Search</title>
+  <meta name="description" content="parishkaram.com — Lightweight search prototype. Replace the mock search with your own backend or search API." />
+
+  <!-- Inter font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#0f1724;
+      --muted:#98a0b3;
+      --accent:#0ea5a4; /* teal */
+      --glass: rgba(255,255,255,0.02);
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial;
+      color-scheme: dark;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#061025 0%, #081526 100%);}
+    a{color:inherit}
+
+    header{display:flex;align-items:center;justify-content:space-between;padding:20px;max-width:1100px;margin:0 auto}
+    .brand{display:flex;align-items:center;gap:14px}
+    .logo{width:48px;height:48px;border-radius:10px;display:inline-grid;place-items:center;background:linear-gradient(135deg,#06b6d4,#7c3aed);font-weight:700;color:white}
+    .title{font-size:18px;font-weight:700}
+    .tag{color:var(--muted);font-size:13px}
+
+    main{max-width:1100px;margin:24px auto;padding:24px}
+
+    .search-card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.03);padding:20px;border-radius:12px;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    .search-row{display:flex;gap:12px}
+    .search-input{flex:1;padding:14px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;outline:none;color:white;font-size:15px}
+    .search-btn{padding:12px 18px;border-radius:10px;border:none;background:linear-gradient(90deg,#06b6d4,#7c3aed);color:white;font-weight:700;cursor:pointer}
+    .controls{display:flex;gap:8px;align-items:center}
+    .small{font-size:13px;color:var(--muted)}
+    .results{margin-top:18px}
+    .result{padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.02);margin-bottom:12px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent)}
+    .result .title{font-weight:600;color:#dbeafe}
+    .result .url{font-size:13px;color:var(--muted);margin-top:6px}
+    .suggestions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .chip{background:rgba(255,255,255,0.03);padding:8px 10px;border-radius:999px;font-size:13px;color:var(--muted);cursor:pointer}
+
+    .sidebar{width:300px;padding:20px}
+    .layout{display:flex;gap:20px}
+
+    /* responsive */
+    @media (max-width:900px){
+      .layout{flex-direction:column}
+      .sidebar{width:100%}
+    }
+
+    footer{max-width:1100px;margin:24px auto;padding:12px;color:var(--muted);font-size:13px;text-align:center}
+
+    /* subtle focus */
+    .search-input:focus{box-shadow:0 6px 18px rgba(6,182,212,0.08);border-color:rgba(6,182,212,0.4)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">P</div>
+      <div>
+        <div class="title">parishkaram.com</div>
+        <div class="tag">Search · Explore · Discover</div>
+      </div>
+    </div>
+    <div class="small">Built with ❤️ — Prototype</div>
+  </header>
+
+  <main>
+    <div class="layout">
+      <section class="search-card" style="flex:1">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <label class="small">Search the web</label>
+          <div class="search-row">
+            <input id="q" class="search-input" placeholder="Type keywords, question or URL..." autocomplete="off" />
+            <button id="searchBtn" class="search-btn">Search</button>
+          </div>
+
+          <div class="controls">
+            <div class="small">Region:</div>
+            <select id="region" class="small" style="background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.03);padding:6px;border-radius:8px">
+              <option value="global">Global</option>
+              <option value="in">India</option>
+              <option value="us">United States</option>
+              <option value="uk">United Kingdom</option>
+            </select>
+
+            <div style="flex:1"></div>
+            <div class="small">Safe search</div>
+            <input id="safe" type="checkbox" checked />
+          </div>
+
+          <div class="suggestions" id="suggestions" aria-hidden="false">
+            <!-- chips populated by JS -->
+          </div>
+
+          <div class="results" id="results">
+            <!-- search results go here -->
+          </div>
+        </div>
+      </section>
+
+      <aside class="sidebar">
+        <div style="background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.03)">
+          <div style="font-weight:700;margin-bottom:8px">Search Tips</div>
+          <ul style="margin:0;padding-left:18px;color:var(--muted);font-size:14px;line-height:1.6">
+            <li>Use quotes to search exact phrases: "climate change"</li>
+            <li>Use + to require terms and - to exclude: +python -java</li>
+            <li>Try domain: operator to search a site: site:example.com</li>
+            <li>Use filetype:pdf to find PDFs</li>
+          </ul>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div style="background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.03)">
+          <div style="font-weight:700;margin-bottom:8px">History</div>
+          <div id="history" style="color:var(--muted);font-size:14px;line-height:1.6">No searches yet.</div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <footer>© parishkaram.com — Prototype. To use a real search backend, replace the mockSearch() function with your search API.</footer>
+
+  <script>
+    // --- Simple, self-contained search prototype ---
+    const suggestionsEl = document.getElementById('suggestions');
+    const resultsEl = document.getElementById('results');
+    const qEl = document.getElementById('q');
+    const searchBtn = document.getElementById('searchBtn');
+    const historyEl = document.getElementById('history');
+
+    const popular = ['latest news', 'weather today', 'how to make idli', 'parishkaram.com', 'javascript tutorial', 'movie reviews 2025'];
+
+    function renderSuggestions(){
+      suggestionsEl.innerHTML = '';
+      popular.forEach(s=>{
+        const c = document.createElement('button');
+        c.className = 'chip';
+        c.textContent = s;
+        c.addEventListener('click', ()=>{ qEl.value = s; triggerSearch(); });
+        suggestionsEl.appendChild(c);
+      });
+    }
+
+    function addHistory(item){
+      const div = document.createElement('div');
+      div.textContent = item;
+      div.style.cursor = 'pointer';
+      div.addEventListener('click', ()=>{ qEl.value = item; triggerSearch(); });
+      // prepend
+      if(historyEl.firstChild && historyEl.firstChild.textContent === 'No searches yet.') historyEl.innerHTML = '';
+      historyEl.prepend(div);
+    }
+
+    function renderResults(results){
+      resultsEl.innerHTML = '';
+      if(!results || results.length === 0){
+        resultsEl.innerHTML = '<div class="small" style="color:var(--muted)">No results found.</div>';
+        return;
+      }
+      results.forEach(r=>{
+        const el = document.createElement('div'); el.className='result';
+        el.innerHTML = `<div class="title">${escapeHtml(r.title)}</div><div class="url">${escapeHtml(r.url)}</div><div class="snippet" style="margin-top:8px;color:var(--muted);font-size:14px">${escapeHtml(r.snippet)}</div>`;
+        resultsEl.appendChild(el);
+      });
+    }
+
+    function escapeHtml(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+    // --- Mock search (replace with real API) ---
+    async function mockSearch(query){
+      // pretend we call a server — return fake results
+      await new Promise(r=>setTimeout(r,400 + Math.random()*400));
+      if(!query) return [];
+      const base = [{title:query + ' — Official', url:'https://www.example.com/'+encodeURIComponent(query), snippet:'This is the official page for ' + query + '.'}];
+      for(let i=1;i<=5;i++) base.push({title:query + ' — result ' + i, url:'https://site'+i+'.com/'+encodeURIComponent(query), snippet:'Brief summary about ' + query + ' — snippet ' + i + '.'});
+      return base;
+    }
+
+    async function triggerSearch(){
+      const q = qEl.value.trim();
+      if(!q) return;
+      resultsEl.innerHTML = '<div class="small" style="color:var(--muted)">Searching...</div>';
+      // store in history
+      addHistory(q);
+      // choose backend — change this to your fetch to your API
+      try{
+        const results = await mockSearch(q);
+        renderResults(results);
+      }catch(e){
+        resultsEl.innerHTML = '<div class="small" style="color:#ffb4b4">Search failed. Check console.</div>';
+        console.error(e);
+      }
+    }
+
+    // --- keyboard shortcuts ---
+    qEl.addEventListener('keydown', (ev)=>{
+      if(ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); triggerSearch(); }
+    });
+    searchBtn.addEventListener('click', triggerSearch);
+
+    // initial render
+    renderSuggestions();
+  </script>
+</body>
+</html>
