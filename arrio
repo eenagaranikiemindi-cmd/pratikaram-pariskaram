@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Bow & Arrow — Shooting Game (parishkaram.com)</title>
+<style>
+  :root{
+    --bg:#071027;
+    --panel:#0b1b34;
+    --muted:#9fb0c9;
+    --accent:#f59e0b;
+    --success:#10b981;
+    --danger:#ef4444;
+  }
+  html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI, Roboto, "Helvetica Neue", Arial;background:linear-gradient(180deg,var(--bg),#071e3a);color:#e6f0fb}
+  .wrap{display:flex;gap:20px;align-items:flex-start;padding:18px;max-width:1200px;margin:0 auto}
+  .game{
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border-radius:12px;padding:14px;box-shadow:0 10px 30px rgba(2,6,23,0.6);
+  }
+  canvas{display:block;background:linear-gradient(180deg,#05203d, #05283f);border-radius:8px}
+  .ui{width:320px;padding:14px;background:var(--panel);border-radius:10px}
+  h1{font-size:18px;margin:0 0 8px 0}
+  p{margin:6px 0;color:var(--muted);font-size:14px}
+  .big {font-size:20px;font-weight:700}
+  .row{display:flex;gap:8px;align-items:center;margin-top:10px}
+  button{padding:8px 12px;border-radius:8px;border:none;cursor:pointer;background:var(--accent);color:#04102a;font-weight:700}
+  button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted);font-weight:600}
+  .status{margin-top:12px;padding:10px;border-radius:8px;background:rgba(255,255,255,0.02);font-weight:700}
+  .victory{color:var(--success)}
+  .defeat{color:var(--danger)}
+  .hint{font-size:13px;color:var(--muted);margin-top:8px}
+  .footer{font-size:12px;color:var(--muted);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="game">
+    <canvas id="c" width="900" height="520"></canvas>
+  </div>
+
+  <aside class="ui">
+    <h1>parishkaram.com — Bow & Arrow</h1>
+    <div class="big" id="resultText">Ready to shoot</div>
+    <p class="hint">Click and drag from the bow area (left) to aim. Release to shoot. Hit the <strong>bullseye</strong> for victory.</p>
+
+    <div class="row">
+      <div>Wind:</div>
+      <div id="windVal" style="min-width:44px;text-align:center;font-weight:700">0</div>
+      <div style="flex:1"></div>
+      <button id="restartBtn" class="secondary">Restart</button>
+    </div>
+
+    <div class="row">
+      <div>Power</div>
+      <input id="powerRange" type="range" min="5" max="40" value="24" style="flex:1">
+      <div id="powerVal" style="min-width:36px;text-align:center;font-weight:700">24</div>
+    </div>
+
+    <div class="row">
+      <button id="oneShotBtn">One-shot challenge</button>
+      <button id="multiBtn" class="secondary">Practice mode</button>
+    </div>
+
+    <div class="status" id="stats">
+      Shots: <span id="shots">0</span> &nbsp; · &nbsp; Hits: <span id="hits">0</span>
+      <div class="footer">Goal: Hit the bullseye (center red circle)</div>
+    </div>
+    <div style="height:8px"></div>
+    <div class="hint">Tip: A short drag = low power; long drag = more power. Wind affects arrow horizontally.</div>
+  </aside>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const W = canvas.width, H = canvas.height;
+
+  // Game state
+  let aiming = false;
+  let shotInFlight = false;
+  let mode = 'practice'; // 'one-shot' or 'practice'
+  let shots = 0, hits = 0;
+
+  const resultText = document.getElementById('resultText');
+  const windVal = document.getElementById('windVal');
+  const powerRange = document.getElementById('powerRange');
+  const powerVal = document.getElementById('powerVal');
+  const restartBtn = document.getElementById('restartBtn');
+  const oneShotBtn = document.getElementById('oneShotBtn');
+  const multiBtn = document.getElementById('multiBtn');
+  const shotsEl = document.getElementById('shots');
+  const hitsEl = document.getElementById('hits');
+
+  // Bow location
+  const bowX = 120;
+  const bowY = H / 2;
+
+  // Target placement
+  const targetX = W - 140;
+  const targetY = H / 2;
+  const targetRadius = 84; // outermost
+  const rings = [
+    {r:84, color:'#153a46'}, // outer
+    {r:64, color:'#1d5260'},
+    {r:44, color:'#2a6a7a'},
+    {r:24, color:'#c2410c'}, // inner (red)
+    {r:8, color:'#f97316'}   // bullseye (orange)
+  ];
+
+  // Arrow physical state
+  let arrow = null;
+
+  // Environment
+  let gravity = 0.45; // pixels per tick^2
+  let airDrag = 0.998; // multiplier per tick on velocity
+  let wind = 0; // horizontal accel added (can be negative)
+  setRandomWind();
+
+  function setRandomWind(){
+    // small random wind between -0.25 and 0.25 (we'll scale)
+    wind = (Math.random() * 1.2 - 0.6); // tweak for stronger effects
+    windVal.textContent = wind.toFixed(2);
+  }
+
+  function resetGame(){
+    aiming = false;
+    shotInFlight = false;
+    arrow = null;
+    resultText.textContent = 'Ready to shoot';
+    resultText.className = '';
+    shots = 0; hits = 0;
+    updateStats();
+    setRandomWind();
+    render();
+  }
+
+  function updateStats(){
+    shotsEl.textContent = shots;
+    hitsEl.textContent = hits;
+  }
+
+  // Convert mouse to canvas coords
+  function getPos(e){
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    return {x,y};
+  }
+
+  // Mouse handling for aim & shoot
+  let aimStart = null; // {x,y}
+  canvas.addEventListener('mousedown', (ev) => {
+    if (shotInFlight && mode === 'one-shot') return; // block
+    const p = getPos(ev);
+    // require that starting click is near bow area (left side)
+    if (p.x < bowX + 60 && p.x > 10) {
+      aiming = true;
+      aimStart = p;
+    }
+  });
+
+  canvas.addEventListener('mousemove', (ev) => {
+    if (!aiming) return;
+    // we can use to show aim line
+    render(); // redraw with current aim line
+  });
+
+  canvas.addEventListener('mouseup', (ev) => {
+    if (!aiming) return;
+    const p = getPos(ev);
+    const dx = aimStart.x - p.x;
+    const dy = aimStart.y - p.y;
+    // direction is from bow toward drag direction (we use vector from bow to release point to set angle)
+    const angle = Math.atan2(dy, dx); // note dx likely negative if p right of start
+    // power is controlled by slider but also modulated by drag length
+    const basePower = parseFloat(powerRange.value);
+    const dragLen = Math.sqrt(dx*dx + dy*dy);
+    const power = Math.max(3, Math.min(60, basePower * (0.7 + Math.min(dragLen/120, 1.4))));
+    launchArrow(angle + Math.PI, power); // reverse angle because we computed from start->release
+    aiming = false;
+    aimStart = null;
+  });
+
+  // Touch support
+  canvas.addEventListener('touchstart', (ev) => {
+    ev.preventDefault();
+    if (shotInFlight && mode === 'one-shot') return;
+    const t = ev.touches[0];
+    const p = getPos(t);
+    if (p.x < bowX + 60 && p.x > 10) {
+      aiming = true;
+      aimStart = p;
+    }
+  }, {passive:false});
+
+  canvas.addEventListener('touchmove', (ev) => {
+    ev.preventDefault();
+    if (!aiming) return;
+    render();
+  }, {passive:false});
+
+  canvas.addEventListener('touchend', (ev) => {
+    ev.preventDefault();
+    if (!aiming) return;
+    // use last known touch position (approx)
+    const p = aimStart; // simplified: use start to simulate single power shot if touchend pos not available
+    // assume small angle for mobile: launch horizontally
+    const angle = 0;
+    const basePower = parseFloat(powerRange.value);
+    launchArrow(angle, basePower);
+    aiming = false;
+    aimStart = null;
+  }, {passive:false});
+
+  function launchArrow(angle, power){
+    // angle: radians, 0 = rightwards, Math.PI/2 = downwards
+    // create arrow state at bow tip
+    if (shotInFlight) return;
+    const speed = power;
+    arrow = {
+      x: bowX + 20,
+      y: bowY,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      angle: angle,
+      length: 46,
+      alive: true
+    };
+    shotInFlight = true;
+    shots++;
+    updateStats();
+    resultText.textContent = 'Arrow in flight...';
+    resultText.className = '';
+  }
+
+  // Physics & simulation
+  function step(){
+    if (arrow && arrow.alive) {
+      // apply physics
+      arrow.vy += gravity;
+      arrow.vx += wind * 0.02; // wind effect
+      arrow.vx *= airDrag;
+      arrow.vy *= airDrag;
+      arrow.x += arrow.vx;
+      arrow.y += arrow.vy;
+      arrow.angle = Math.atan2(arrow.vy, arrow.vx);
+
+      // Check collisions with ground or out-of-bounds
+      if (arrow.y > H - 10 || arrow.x > W + 200 || arrow.x < -200) {
+        arrow.alive = false;
+        finalizeShot(false);
+      } else {
+        // check hit on target (approx using arrow tip)
+        const tipX = arrow.x + Math.cos(arrow.angle) * arrow.length;
+        const tipY = arrow.y + Math.sin(arrow.angle) * arrow.length;
+        const dx = tipX - targetX;
+        const dy = tipY - targetY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist <= rings[0].r) {
+          // hit exists
+          arrow.alive = false;
+          const bull = rings[rings.length-1].r; // bullseye radius
+          const inner = rings[rings.length-2].r; // inner ring (red)
+          // decide victory if hit the bullseye or inner ring center
+          const isVictory = dist <= inner; // treat inner red as victory
+          finalizeShot(isVictory);
+        }
+      }
+    }
+  }
+
+  function finalizeShot(isVictory){
+    shotInFlight = false;
+    if (isVictory) {
+      resultText.textContent = 'VICTORY — Bullseye!';
+      resultText.className = 'victory';
+      hits++;
+      updateStats();
+    } else {
+      resultText.textContent = 'DEFEAT — Missed the bullseye.';
+      resultText.className = 'defeat';
+    }
+    // If one-shot mode, block further shots until restart
+    if (mode === 'one-shot') {
+      // keep state locked; user must press restart
+    }
+  }
+
+  // Draw helpers
+  function drawBow(cx, cy) {
+    // bow curve (simple)
+    ctx.save();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#8b5cf6';
+    ctx.beginPath();
+    ctx.moveTo(cx-6, cy-60);
+    ctx.quadraticCurveTo(cx-40, cy, cx-6, cy+60);
+    ctx.stroke();
+    // string
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx+10, cy-70);
+    ctx.lineTo(cx+10, cy+70);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawArrow(a) {
+    if (!a) return;
+    ctx.save();
+    ctx.translate(a.x, a.y);
+    ctx.rotate(a.angle);
+    // shaft
+    ctx.fillStyle = '#c7c7c7';
+    ctx.fillRect(0, -2, a.length, 4);
+    // tip
+    ctx.beginPath();
+    ctx.moveTo(a.length, 0);
+    ctx.lineTo(a.length+8, -5);
+    ctx.lineTo(a.length+8, 5);
+    ctx.closePath();
+    ctx.fillStyle = '#333';
+    ctx.fill();
+    // feather
+    ctx.fillStyle = '#f97316';
+    ctx.beginPath();
+    ctx.moveTo(-6, -6); ctx.lineTo(-12, -2); ctx.lineTo(-6, 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawTarget(){
+    // shadow
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(targetX+4, targetY+6, rings[0].r+8, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fill();
+    ctx.restore();
+
+    for (let i = 0; i < rings.length; i++){
+      const r = rings[i].r;
+      ctx.beginPath();
+      ctx.arc(targetX, targetY, r, 0, Math.PI*2);
+      ctx.fillStyle = rings[i].color;
+      ctx.fill();
+      // ring outline
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.stroke();
+    }
+    // target label
+    ctx.fillStyle = '#dbeafe';
+    ctx.font = '13px system-ui, Arial';
+    ctx.fillText('TARGET', targetX - 28, targetY - rings[0].r - 14);
+  }
+
+  function renderAim(aimStart){
+    if (!aimStart) return;
+    // show line from bow tip to current mouse
+    const mouse = lastMouse || {x: aimStart.x + 100, y: aimStart.y};
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(bowX + 10, bowY);
+    ctx.lineTo(mouse.x, mouse.y);
+    ctx.stroke();
+
+    // draw power indicator near bow
+    const dx = aimStart.x - mouse.x;
+    const dy = aimStart.y - mouse.y;
+    const len = Math.min(120, Math.sqrt(dx*dx + dy*dy));
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(bowX - 8, bowY + 80, len, 8);
+    ctx.restore();
+  }
+
+  // last mouse pos for aim preview
+  let lastMouse = null;
+  canvas.addEventListener('mousemove', (ev) => {
+    lastMouse = getPos(ev);
+  });
+  canvas.addEventListener('mouseleave', () => lastMouse = null);
+
+  // Main render
+  function render(){
+    // clear
+    ctx.clearRect(0,0,W,H);
+
+    // background decorations
+    // horizon line
+    ctx.fillStyle = '#041b2a';
+    ctx.fillRect(0, H - 70, W, 70);
+
+    // draw ground grass
+    ctx.fillStyle = '#052f23';
+    ctx.fillRect(0, H - 70, W, 10);
+
+    // draw bow
+    drawBow(bowX, bowY);
+
+    // draw arrow if not launched yet (docked)
+    if (!shotInFlight && !arrow) {
+      // draw a resting arrow next to bow showing orientation
+      const temp = {x: bowX + 26, y: bowY, angle: 0, length: 46};
+      drawArrow(temp);
+    }
+
+    // draw aim preview if aiming
+    if (aiming && aimStart) {
+      renderAim(aimStart);
+    }
+
+    // draw target
+    drawTarget();
+
+    // draw arrow in flight or landed
+    if (arrow) {
+      drawArrow(arrow);
+      // draw trail
+      if (!arrow.alive && !shotInFlight) {
+        // show where arrow landed with small marker
+        ctx.beginPath();
+        ctx.arc(arrow.x, arrow.y, 6, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fill();
+      }
+    }
+
+    // UI overlays: wind arrow
+    ctx.save();
+    ctx.translate(20, 28);
+    ctx.fillStyle = '#fff';
+    ctx.font = '13px system-ui';
+    ctx.fillText('Wind', 0, 0);
+    ctx.beginPath();
+    ctx.rect(0,8,120,24);
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillText(wind.toFixed(2), 8, 26);
+    // small wind arrow graphic
+    ctx.beginPath();
+    ctx.moveTo(100,20);
+    if (wind > 0) {
+      ctx.lineTo(100 - Math.min(32, wind*20), 8);
+    } else {
+      ctx.lineTo(100 - Math.max(-32, wind*20), 32);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Animation loop
+  function loop(){
+    step();
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // UI hooks
+  restartBtn.addEventListener('click', () => {
+    // reset arrow/lock for one-shot
+    arrow = null;
+    shotInFlight = false;
+    resultText.textContent = 'Ready to shoot';
+    resultText.className = '';
+    setRandomWind();
+  });
+
+  powerRange.addEventListener('input', () => {
+    powerVal.textContent = powerRange.value;
+  });
+
+  oneShotBtn.addEventListener('click', () => {
+    mode = 'one-shot';
+    resultText.textContent = 'One-shot challenge: hit the bullseye!';
+    resultText.className = '';
+    // reset arrow
+    arrow = null;
+    shotInFlight = false;
+    shots = 0; hits = 0;
+    updateStats();
+    setRandomWind();
+  });
+
+  multiBtn.addEventListener('click', () => {
+    mode = 'practice';
+    resultText.textContent = 'Practice mode: take multiple shots.';
+    resultText.className = '';
+    arrow = null;
+    shotInFlight = false;
+    shots = 0; hits = 0;
+    updateStats();
+    setRandomWind();
+  });
+
+  // keyboard quick actions
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'r') {
+      // reset
+      arrow = null; shotInFlight = false; setRandomWind();
+    }
+    if (e.key === ' ') {
+      // cheat: launch a straight strong arrow
+      if (!shotInFlight) launchArrow(0, 36);
+    }
+  });
+
+  // initial render & start
+  resetGame();
+  loop();
+
+})();
+</script>
+</body>
+</html>
